@@ -1,0 +1,6 @@
+name = WissKI Simple Reasoner API
+description = A basic module for owl-adressing of the t-box data in the triple store
+package = WissKI
+version = 0.1
+core = 6.x
+dependencies[] = wisski

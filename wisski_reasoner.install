@@ -1,0 +1,132 @@
+<?php
+
+/**
+ * Implementation of hook_install().
+ */
+function wisski_reasoner_install() {
+  // Create tables.
+  drupal_install_schema('wisski_reasoner');
+  db_query("ALTER TABLE {owl_class} engine=INNODB");
+  db_query("ALTER TABLE {owl_property} engine=INNODB");
+  db_query("ALTER TABLE {owl_domain} engine=INNODB");
+  db_query("ALTER TABLE {owl_range} engine=INNODB");
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function wisski_reasoner_uninstall() {
+  // Remove tables.
+  drupal_uninstall_schema('wisski_reasoner');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function wisski_reasoner_schema() {
+  $schema['owl_property'] = array(
+    'description' => 'A table for easy owl-access without touching the rdf-framework.',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'The id of the predicate.',
+      ),
+
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The name of the predicate.',
+      ),
+      
+      'type' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The type of the predicate.',
+      ),
+		),
+    'primary key' => array('id', 'name'),
+    'unique keys' => array('name' => array('name'), 'idun' => array('id')),
+    'indexes' => array('idind' => array('id')),
+  );
+
+  $schema['owl_class'] = array(
+    'description' => 'A table for easy owl-access without touching the rdf-framework.',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'The id of the class.',
+      ),
+
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The name of the class.',
+      ),
+		),
+    'primary key' => array('id'),
+		'unique keys' => array('name' => array('name'), 'id' => array('id')),
+    'indexes' => array('idind' => array('id')),
+  );
+
+  $schema['owl_domain'] = array(
+    'description' => 'A table for easy owl-access without touching the rdf-framework.',
+    'fields' => array(
+      'property_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the property.',
+      ),
+      'class_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the class.',
+      ),
+		),
+		'indexes' => array('class_id' => array('class_id'), 'property_id' => array('property_id')),
+	);
+
+  $schema['owl_range'] = array(
+    'description' => 'A table for easy owl-access without touching the rdf-framework.',
+    'fields' => array(
+      'property_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the property.',
+      ),
+      'class_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the class.',
+      ),
+		),
+		'indexes' => array('class_id' => array('class_id'), 'property_id' => array('property_id')),
+  );
+
+  $schema['owl_inverse'] = array(
+    'description' => 'A table for easy owl-access without touching the rdf-framework.',
+    'fields' => array(
+      'property_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the property.',
+      ),
+      'inverse_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'The id of the properties inverse.',
+      ),
+		),
+		'indexes' => array('property_id' => array('property_id'), 'inverse_id' => array('inverse_id')),
+  );
+
+  return $schema;
+}
+

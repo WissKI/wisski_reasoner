@@ -1,0 +1,434 @@
+<?php
+
+function wisski_reasoner_enable() {
+	wisski_reasoner_loadClasses();
+	wisski_reasoner_loadProperties();
+	wisski_reasoner_loadRangeAndDomain();
+	wisski_reasoner_loadInverses();
+}
+
+function wisski_reasoner_disable() {
+	db_query("TRUNCATE TABLE {owl_class}");
+	db_query("TRUNCATE TABLE {owl_property}");
+	db_query("TRUNCATE TABLE {owl_domain}");
+	db_query("TRUNCATE TABLE {owl_range}");
+	db_query("TRUNCATE TABLE {owl_inverse}");
+}
+
+function wisski_reasoner_loadClasses() {
+
+	$namespaces = wisski_store_getObj()->wisski_ARCAdapter_getNamespaces();
+  $q = "";
+  foreach ($namespaces as $name => $val) {
+    $q .= "PREFIX $name:\t<$val>\n";
+  }	
+
+	$q .= "SELECT ?z WHERE { ?z rdf:type owl:Class }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		foreach ($rows as $row) {
+			if($row['z type'] != "bnode")
+				 db_query("INSERT INTO {owl_class} (name) VALUES ('%s')", $row['z']);
+		}
+	}
+	
+}
+
+function wisski_reasoner_loadProperties() {
+
+	$namespaces = wisski_store_getObj()->wisski_ARCAdapter_getNamespaces();
+  $q = "";
+  foreach ($namespaces as $name => $val) {
+    $q .= "PREFIX $name:\t<$val>\n";
+  }	
+
+	$q1 .= "SELECT ?z WHERE { ?z rdf:type owl:ObjectProperty }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q1, 'rows')) {
+		foreach ($rows as $row) {
+			if($row['z type'] != "bnode")
+				 db_query("INSERT INTO {owl_property} (name, type) VALUES ('%s', '%s')", $row['z'], "owl:ObjectProperty");
+		}
+	}
+	
+	$q2 .= "SELECT ?z WHERE { ?z rdf:type owl:DatatypeProperty }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q2, 'rows')) {
+		foreach ($rows as $row) {
+			if($row['z type'] != "bnode")
+				 db_query("INSERT INTO {owl_property} (name, type) VALUES ('%s', '%s')", $row['z'], "owl:DatatypeProperty");
+		}
+	}
+	
+}
+
+function wisski_reasoner_loadRangeAndDomain() {
+	$result = db_query("SELECT p.id, p.name, p.type FROM {owl_property} p");
+	
+	$properties = array();
+	while ($row = db_fetch_object($result)) {
+		$properties[$row->name] = array($row->id, $row->type);
+	}
+	
+	$result = db_query("SELECT p.id, p.name FROM {owl_class} p");
+	
+	$classes = array();
+	while ($row = db_fetch_object($result)) {
+		$classes[$row->name] = $row->id;
+	
+	}
+	
+	
+	foreach($properties as $property => $arr) {
+
+	  $id = $arr[0];
+	  $type = $arr[1];
+		$domain = _wisski_reasoner_getDomainConcepts($property);
+    if(!$domain) {
+      drupal_set_message("Could not find a domain for $property - skipped.", "error");
+      continue;
+    }
+		foreach($domain as $class) {
+			db_query("INSERT INTO {owl_domain} (property_id, class_id) VALUES ('%d', '%d')", $id, $classes[$class]);
+		}
+		
+		if($type == "owl:ObjectProperty") {
+  		$range = _wisski_reasoner_getRangeConcepts($property);
+  		if(!$range) {
+  		  drupal_set_message("Could not find a range for $property - skipped.", "error");
+  		  continue;
+  		}
+  		foreach($range as $class) {
+  			db_query("INSERT INTO {owl_range} (property_id, class_id) VALUES ('%d', '%d')", $id, $classes[$class]);
+  		}
+    }
+	}
+	
+}
+
+function wisski_reasoner_loadInverses() {
+
+	$result = db_query("SELECT p.id, p.name FROM {owl_property} p");
+	
+	$properties = array();
+	while ($row = db_fetch_object($result)) {
+		$properties[$row->name] = $row->id;
+	}
+
+	$namespaces = wisski_store_getObj()->wisski_ARCAdapter_getNamespaces();
+  $q = "";
+  foreach ($namespaces as $name => $val) {
+    $q .= "PREFIX $name:\t<$val>\n";
+  }	
+
+	$q .= "SELECT ?a ?b WHERE { { ?a rdf:type owl:ObjectProperty . ?a owl:inverseOf ?b . ?b rdf:type owl:ObjectProperty . }" .
+	      " UNION { ?a rdf:type owl:ObjectProperty . ?b owl:inverseOf ?a . ?b rdf:type owl:ObjectProperty . }  }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		foreach ($rows as $row) {
+	  	if($row['a type'] != "bnode" && $row['b type'] != "bnode")
+	  	  db_query("INSERT INTO {owl_inverse} (property_id, inverse_id) VALUES ('%d', '%d')", $properties[$row['a']], $properties[$row['b']]);
+		}
+	}
+	
+}
+
+/**
+ * Retrieves all valid properties for a concept
+ * @param concept the concept in its long form (http...)
+ * @author Mark Fichtner
+ */    
+function wisski_reasoner_getPropertiesForConcept($class) {
+  $result = db_query("SELECT p.name FROM {owl_class} c INNER JOIN {owl_domain} d ON d.class_id = c.id INNER JOIN {owl_property} p ON d.property_id = p.id WHERE c.name LIKE '$class'"); 
+  $props = array();
+  
+  while($row = db_fetch_object($result)) {
+    $props[] = $row->name;
+  }
+  return $props;
+}
+
+/**
+ * Retrieves the inverse for a predicate
+ * @param predicate the predicate in its long form (http...)
+ * @author Mark Fichtner
+ */
+function wisski_reasoner_getInverse($predicate) {
+  $result = db_query("SELECT o.name FROM {owl_property} p INNER JOIN {owl_inverse} i ON p.id = i.property_id INNER JOIN {owl_property} o ON i.inverse_id = o.id WHERE p.name LIKE '$predicate'");
+  $row = db_fetch_object($result);
+  return $row->name;
+}
+
+/**
+ * Retrieves the domain for a predicate
+ * @param predicate the predicate in its long form (http...)
+ * @author Mark Fichtner
+ */
+function wisski_reasoner_getDomainConcepts($predicate) {
+	$result = db_query("SELECT c.name FROM {owl_property} p INNER JOIN {owl_domain} d ON d.property_id = p.id INNER JOIN {owl_class} c ON d.class_id = c.id WHERE p.name LIKE '$predicate'");
+	$classes = array();
+	
+	while ($row = db_fetch_object($result)) {
+		$classes[] = $row->name;
+	}
+	return $classes;
+}
+
+/**
+ * Retrieves the range for a predicate
+ * @param the predicate in its long form (http...)
+ * @author Mark Fichtner
+ */
+function wisski_reasoner_getRangeConcepts($predicate) {
+	$result = db_query("SELECT c.name FROM {owl_property} p INNER JOIN {owl_range} d ON d.property_id = p.id INNER JOIN {owl_class} c ON d.class_id = c.id WHERE p.name LIKE '$predicate'");
+	$classes = array();
+	
+	while ($row = db_fetch_object($result)) {
+		$classes[] = $row->name;
+	}
+	return $classes;
+}
+
+function _wisski_reasoner_getDomainConcepts($pred) {
+  if(empty($pred))
+    return;
+
+	$namespaces = wisski_store_getObj()->wisski_ARCAdapter_getNamespaces();
+  $ns = "";
+  foreach ($namespaces as $name => $val) {
+    $ns .= "PREFIX $name:\t<$val>\n";
+  }	
+
+	// It can either be directly per domain or indirectly per union
+
+	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:domain ?z . ?z rdf:type owl:Class }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		if ( count($rows) != 0) {
+			$ret = array();
+			
+			foreach ($rows as $row) {
+				if($row['z type'] != "bnode")
+					$ret[] = $row['z'];
+			}
+
+			if(count($ret) > 0) 
+				return $ret;			
+
+		}
+	} else {
+	  $inver = $ns . "SELECT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:range ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:range ?z } }";
+		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
+			
+		if($rows) {
+			return _wisski_reasoner_getRangeConcepts($rows[0]['x']);
+		} else {
+		   $upper = wisski_store_getObj()->wisski_ARCAdapter_getUpperProperties($pred);
+
+		   foreach($upper as $up) {
+		     if(wisski_store_getObj()->wisski_ARCAdapter_delNamespace($up) != $pred)
+  		     return _wisski_reasoner_getDomainConcepts(wisski_store_getObj()->wisski_ARCAdapter_delNamespace($up));
+		   }
+		}
+	
+	}  
+
+	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:domain ?x . ?x owl:unionOf ?z }"; 
+
+	$x = "";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		if ( count($rows) == 0 )
+			return array();
+		
+	}
+
+	
+	$qStart = $ns . "SELECT ";
+	$qMid = "WHERE { <$pred> rdfs:domain ?x . ?x owl:unionOf ?z0 ";
+	$qEnd = "}";
+
+	
+	for($i=0; ; $i++) {
+		
+		$qStart .= ("?x" . $i . " ?z" . ($i + 1) . " ");
+		$qMid .= (". ?z" . $i . " rdf:first ?x" . $i . " . ?z" . $i . " rdf:rest ?z" . ($i + 1) . " ");
+		
+		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($qStart . $qMid . $qEnd), 'rows');
+		
+		if(count($rows) > 1) {
+			drupal_set_message("Too many results for the property " . $pred . ", perhaps wrong domain?", "error");
+      drupal_set_message("Query was: " . serialize(($qStart . $qMid . $qEnd)), "error");
+			break;
+		}
+		
+		if(count($rows) == 0 && $i == 0) {
+			$inver = "SELECT ?x WHERE { { ?x owl:inverseOf <$pred> } UNION { <$pred> owl:inverseOf ?x } }";
+			$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
+			
+			if(count($rows) > 0) {
+				return _wisski_reasoner_getRangeConcepts($rows[0]['x']);
+			}
+		}
+		
+		if(count($rows) == 0) {
+			drupal_set_message("Property analysis failed at $qStart . $qMid . $qEnd. No Domain!", "error");
+			break;
+		}
+
+		if($rows[0]['z' . ($i + 1) . ' type'] != "bnode") {
+			$ret = array();
+			for($ii = 0; $ii <= $i; $ii++) {
+				$ret[] = $rows[0]['x' . $ii . '']; 
+			}
+			return $ret;
+		}
+
+		
+	}
+
+	return array();	
+
+}
+
+function _wisski_reasoner_getRangeConcepts($pred) {
+  if(empty($pred))
+    return;
+    
+	$namespaces = wisski_store_getObj()->wisski_ARCAdapter_getNamespaces();
+  $ns = "";
+  foreach ($namespaces as $name => $val) {
+    $ns .= "PREFIX $name:\t<$val>\n";
+  }	
+
+	// It can either be directly per domain or indirectly per union
+	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:range ?z . ?z rdf:type owl:Class }";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		if ( count($rows) != 0) {
+			$ret = array();
+			
+			foreach ($rows as $row) {
+				if($row['z type'] != "bnode")
+					$ret[] = $row['z'];
+			}
+
+			if(count($ret) > 0) 
+				return $ret;			
+
+		}
+	} else {
+	  $inver = $ns . "SELECT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:domain ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:domain ?z } }";
+		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
+			
+		if($rows) {
+			return _wisski_reasoner_getDomainConcepts($rows[0]['x']);
+		} else {
+		   $upper = wisski_store_getObj()->wisski_ARCAdapter_getUpperProperties($pred);
+
+		   foreach($upper as $up) {
+		     if(wisski_store_getObj()->wisski_ARCAdapter_delNamespace($up) != $pred)
+  		     return _wisski_reasoner_getRangeConcepts(wisski_store_getObj()->wisski_ARCAdapter_delNamespace($up));
+		   }
+		}
+	
+	}  
+
+	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:range ?x . ?x owl:unionOf ?z }"; 
+
+	$x = "";
+
+	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
+		if ( count($rows) == 0 ) {
+	    return array();
+    }
+		
+	}
+
+	
+	$qStart = $ns . "SELECT ";
+	$qMid = "WHERE { <$pred> rdfs:range ?x . ?x owl:unionOf ?z0 ";
+	$qEnd = "}";
+
+	
+	for($i=0; ; $i++) {
+		$qStart .= ("?x" . $i . " ?z" . ($i + 1) . " ");
+		$qMid .= (". ?z" . $i . " rdf:first ?x" . $i . " . ?z" . $i . " rdf:rest ?z" . ($i + 1) . " ");
+		
+		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($qStart . $qMid . $qEnd), 'rows');
+		
+		if(count($rows) > 1) {
+			drupal_set_message("Too many results for the property " . $pred . ", perhaps wrong range?", "error");
+			break;
+		}
+		
+		if(count($rows) == 0) {
+			drupal_set_message("Property analysis failed at $qStart . $qMid . $qEnd. No Range!", "error");
+			break;
+		}
+
+		if($rows[0]['z' . ($i + 1) . ' type'] != "bnode") {
+			$ret = array();
+			for($ii = 0; $ii <= $i; $ii++) {
+				$ret[] = $rows[0]['x' . $ii . '']; 
+			}
+			return $ret;
+		}
+
+		
+	}
+
+	return array();	
+}
+
+function wisski_reasoner_getPathsMaximum($from, $to, $distance) {
+}
+
+function wisski_reasoner_getPaths($from, $to, $distance) {
+	$q = "SELECT";
+
+	if($distance == 0) 
+	  $distance = 1;
+	
+	
+	for($i=0; $i < $distance; $i++) {
+		if($i>0)
+			$q .= ",";
+		if($i == 0) 
+			$q .= " class$i.name as x$i,";
+		$q .= " prop$i.name as y$i,";
+		$q .= " class" . ($i+1) . ".name as x" . ($i+1) . "";
+	}
+	
+	$q .= " FROM ";
+
+
+  for($i=1; $i < $distance; $i++) {
+  	$q .= "((((";
+	}
+	
+	
+	for($i=0; $i < $distance; $i++) {
+		if($i==0)
+			$q .=("(".
+						"(".
+						"(".
+						"((SELECT name, id FROM {owl_class} class0 WHERE class0.name = '$from') AS class0 INNER JOIN {owl_domain} dom$i ON class$i.id = dom$i.class_id)".
+						" INNER JOIN {owl_property} prop$i ON dom$i.property_id = prop$i.id)". 
+						" INNER JOIN {owl_range} range$i ON range$i.property_id = dom$i.property_id)".
+						" INNER JOIN {owl_class} class" . ($i + 1) . " ON range$i.class_id = class" . ($i + 1) . ".id)");
+		else
+			$q .=(" INNER JOIN {owl_domain} dom$i ON class$i.id = dom$i.class_id)".
+						" INNER JOIN {owl_property} prop$i ON dom$i.property_id = prop$i.id)".
+						" INNER JOIN {owl_range} range$i ON range$i.property_id = dom$i.property_id)".
+						" INNER JOIN {owl_class} class" . ($i + 1) . " ON range$i.class_id = class" . ($i + 1) . ".id)");
+	}
+	
+	
+	
+	$q .= " WHERE class$distance.name = '$to' ";//&& x$distance.name = '$to' ";
+	
+	return db_query($q);
+
+	
+}
