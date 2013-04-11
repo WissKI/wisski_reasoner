@@ -6,10 +6,12 @@
 function wisski_reasoner_install() {
   // Create tables.
   drupal_install_schema('wisski_reasoner');
-  db_query("ALTER TABLE {owl_class} engine=INNODB");
-  db_query("ALTER TABLE {owl_property} engine=INNODB");
-  db_query("ALTER TABLE {owl_domain} engine=INNODB");
-  db_query("ALTER TABLE {owl_range} engine=INNODB");
+  if($dbtype == 'mysql') {
+    db_query("ALTER TABLE {owl_class} engine=INNODB");
+    db_query("ALTER TABLE {owl_property} engine=INNODB");
+    db_query("ALTER TABLE {owl_domain} engine=INNODB");
+    db_query("ALTER TABLE {owl_range} engine=INNODB");
+  }
 }
 
 /**
