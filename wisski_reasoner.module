@@ -23,7 +23,7 @@ function wisski_reasoner_loadClasses() {
     $q .= "PREFIX $name:\t<$val>\n";
   }	
 
-	$q .= "SELECT ?z WHERE { ?z rdf:type owl:Class }";
+	$q .= "SELECT DISTINCT ?z WHERE { ?z rdf:type owl:Class }";
 
 	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
 		foreach ($rows as $row) {
@@ -42,7 +42,7 @@ function wisski_reasoner_loadProperties() {
     $q .= "PREFIX $name:\t<$val>\n";
   }	
 
-	$q1 .= "SELECT ?z WHERE { ?z rdf:type owl:ObjectProperty }";
+	$q1 .= "SELECT DISTINCT ?z WHERE { ?z rdf:type owl:ObjectProperty }";
 
 	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q1, 'rows')) {
 		foreach ($rows as $row) {
@@ -51,7 +51,7 @@ function wisski_reasoner_loadProperties() {
 		}
 	}
 	
-	$q2 .= "SELECT ?z WHERE { ?z rdf:type owl:DatatypeProperty }";
+	$q2 .= "SELECT DISTINCT ?z WHERE { ?z rdf:type owl:DatatypeProperty }";
 
 	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q2, 'rows')) {
 		foreach ($rows as $row) {
@@ -94,6 +94,7 @@ function wisski_reasoner_loadRangeAndDomain() {
 		
 		if($type == "owl:ObjectProperty") {
   		$range = _wisski_reasoner_getRangeConcepts($property);
+if (strpos($property, 'N1_')) dpm($range);
   		if(!$range) {
   		  drupal_set_message("Could not find a range for $property - skipped.", "error");
   		  continue;
@@ -201,7 +202,7 @@ function _wisski_reasoner_getDomainConcepts($pred) {
 
 	// It can either be directly per domain or indirectly per union
 
-	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:domain ?z . ?z rdf:type owl:Class }";
+	$q = $ns . "SELECT DISTINCT ?z WHERE { <$pred> rdfs:domain ?z . ?z rdf:type owl:Class }";
 
 	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
 		if ( count($rows) != 0) {
@@ -217,7 +218,7 @@ function _wisski_reasoner_getDomainConcepts($pred) {
 
 		}
 	} else {
-	  $inver = $ns . "SELECT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:range ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:range ?z } }";
+	  $inver = $ns . "SELECT DISTINCT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:range ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:range ?z } }";
 		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
 			
 		if($rows) {
@@ -233,7 +234,7 @@ function _wisski_reasoner_getDomainConcepts($pred) {
 	
 	}  
 
-	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:domain ?x . ?x owl:unionOf ?z }"; 
+	$q = $ns . "SELECT DISTINCT ?z WHERE { <$pred> rdfs:domain ?x . ?x owl:unionOf ?z }"; 
 
 	$x = "";
 
@@ -244,7 +245,7 @@ function _wisski_reasoner_getDomainConcepts($pred) {
 	}
 
 	
-	$qStart = $ns . "SELECT ";
+	$qStart = $ns . "SELECT DISTINCT ";
 	$qMid = "WHERE { <$pred> rdfs:domain ?x . ?x owl:unionOf ?z0 ";
 	$qEnd = "}";
 
@@ -263,7 +264,7 @@ function _wisski_reasoner_getDomainConcepts($pred) {
 		}
 		
 		if(count($rows) == 0 && $i == 0) {
-			$inver = "SELECT ?x WHERE { { ?x owl:inverseOf <$pred> } UNION { <$pred> owl:inverseOf ?x } }";
+			$inver = "SELECT DISTINCT ?x WHERE { { ?x owl:inverseOf <$pred> } UNION { <$pred> owl:inverseOf ?x } }";
 			$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
 			
 			if(count($rows) > 0) {
@@ -302,7 +303,7 @@ function _wisski_reasoner_getRangeConcepts($pred) {
   }	
 
 	// It can either be directly per domain or indirectly per union
-	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:range ?z . ?z rdf:type owl:Class }";
+	$q = $ns . "SELECT DISTINCT ?z WHERE { <$pred> rdfs:range ?z . ?z rdf:type owl:Class }";
 
 	if ($rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query($q, 'rows')) {
 		if ( count($rows) != 0) {
@@ -318,7 +319,7 @@ function _wisski_reasoner_getRangeConcepts($pred) {
 
 		}
 	} else {
-	  $inver = $ns . "SELECT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:domain ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:domain ?z } }";
+	  $inver = $ns . "SELECT DISTINCT ?x ?z WHERE { { ?x owl:inverseOf <$pred> . ?x rdfs:domain ?z } UNION { <$pred> owl:inverseOf ?x . ?x rdfs:domain ?z } }";
 		$rows = wisski_store_getObj()->wisski_ARCAdapter_getStore()->query(($inver), 'rows');
 			
 		if($rows) {
@@ -334,7 +335,7 @@ function _wisski_reasoner_getRangeConcepts($pred) {
 	
 	}  
 
-	$q = $ns . "SELECT ?z WHERE { <$pred> rdfs:range ?x . ?x owl:unionOf ?z }"; 
+	$q = $ns . "SELECT DISTINCT ?z WHERE { <$pred> rdfs:range ?x . ?x owl:unionOf ?z }"; 
 
 	$x = "";
 
@@ -346,7 +347,7 @@ function _wisski_reasoner_getRangeConcepts($pred) {
 	}
 
 	
-	$qStart = $ns . "SELECT ";
+	$qStart = $ns . "SELECT DISTINCT ";
 	$qMid = "WHERE { <$pred> rdfs:range ?x . ?x owl:unionOf ?z0 ";
 	$qEnd = "}";
 
