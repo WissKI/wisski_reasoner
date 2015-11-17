@@ -94,7 +94,6 @@ function wisski_reasoner_loadRangeAndDomain() {
 		
 		if($type == "owl:ObjectProperty") {
   		$range = _wisski_reasoner_getRangeConcepts($property);
-if (strpos($property, 'N1_')) dpm($range);
   		if(!$range) {
   		  drupal_set_message("Could not find a range for $property - skipped.", "error");
   		  continue;
